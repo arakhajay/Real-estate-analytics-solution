@@ -1,0 +1,41 @@
+property_id,name,address,neighborhood,class,base_rent_mod,total_units,built_year
+PROP_000,Fowler Lofts,"32181 Johnson Course Apt. 389
+New Jamesside, MT 29394",Suburbs,B,1.0,76,1982
+PROP_001,Cole Lofts,"65423 Garcia Light
+West Melanieview, AS 06196",East End,A,1.4,55,1990
+PROP_002,Blair Lofts,"84959 Janet Cape Apt. 413
+South Joshuastad, GA 49021",Northside,B,1.0,89,1996
+PROP_003,Kelly Manor,"283 Steven Groves
+Lake Mark, WI 07832",Suburbs,B,1.0,13,1981
+PROP_004,Perez Apartments,"4139 Lewis Parks Suite 724
+East Julie, ND 34939",Downtown,B,1.5,63,2014
+PROP_005,Burgess Residences,"3287 Katelyn Wall Apt. 226
+South Patrickmouth, NC 33454",Suburbs,A,1.4,81,2008
+PROP_006,Maddox Lofts,"184 Rodriguez Mews
+South Aaron, VA 94830",Suburbs,C,0.8,88,2015
+PROP_007,Baker Apartments,"148 Eric Track
+New Stephanie, NC 00575",Northside,B,1.0,32,2003
+PROP_008,George Lofts,"4303 Christopher Oval
+Port Amandaberg, DC 86975",East End,B,1.0,18,1983
+PROP_009,Alvarez Apartments,"963 Jennifer Locks Suite 787
+East Jeffreymouth, AK 77611",Suburbs,C,0.8,75,1985
+PROP_010,Spencer Residences,"03105 Willie Harbors
+Lewisberg, VA 75348",East End,B,1.0,31,1991
+PROP_011,Johnston Apartments,"3116 Henderson Mountain Apt. 106
+Laurenville, IA 25613",East End,B,1.0,61,2011
+PROP_012,Lee Apartments,"47317 Brent Plains Apt. 132
+Tuckerborough, VI 53066",East End,B,1.0,92,2022
+PROP_013,Barrera Manor,"4746 Moore Hill
+North Beth, ND 08490",East End,C,0.8,91,2013
+PROP_014,Adkins Residences,"820 Melissa Cliff Apt. 361
+New Brooke, RI 11246",East End,B,1.0,15,1984
+PROP_015,Barnes Apartments,"3534 Anderson Rue Suite 751
+South Christineshire, CT 10103",Northside,C,0.8,46,2018
+PROP_016,Medina Apartments,"1354 Samuel Plains
+Cherylhaven, AL 88039",Downtown,B,1.5,58,2022
+PROP_017,Montoya Residences,"41182 Campbell Fords
+Jamesview, NY 64533",Suburbs,C,0.8,71,2018
+PROP_018,King Lofts,"PSC 0164, Box 0052
+APO AP 34836",East End,C,0.8,90,2003
+PROP_019,Martin Residences,"011 Amy Village Suite 982
+Andersonport, MN 05730",Suburbs,B,1.0,64,2005

@@ -1,0 +1,31 @@
+property_id,name,neighborhood,class
+PROP_000,Rodriguez Towers,Upper East Side,B
+PROP_001,Galloway Lofts,Financial District,B
+PROP_002,Shepherd Court,Tribeca,B
+PROP_003,Reese Court,Tribeca,B
+PROP_004,Mccann Towers,Harlem,B
+PROP_005,Hill Court,East Village,B
+PROP_006,Flynn Towers,Tribeca,B
+PROP_007,Fuller Lofts,Harlem,B
+PROP_008,Perez Towers,Financial District,B
+PROP_009,Brooks Lofts,Tribeca,B
+PROP_010,Salazar Towers,East Village,B
+PROP_011,Burton Lofts,Harlem,A
+PROP_012,Fisher Court,East Village,B
+PROP_013,Rogers Lofts,Upper East Side,A
+PROP_014,Ayers Towers,Tribeca,B
+PROP_015,Lynch Lofts,Financial District,A
+PROP_016,Williams Towers,Upper East Side,C
+PROP_017,Davis Lofts,Tribeca,B
+PROP_018,Stanton Lofts,East Village,B
+PROP_019,Rogers Lofts,Tribeca,B
+PROP_020,Moore Court,Upper East Side,A
+PROP_021,Lowe Towers,Financial District,C
+PROP_022,Martinez Towers,Financial District,B
+PROP_023,Knapp Lofts,Upper East Side,C
+PROP_024,Carrillo Towers,Financial District,B
+PROP_025,Blair Lofts,Harlem,B
+PROP_026,Lindsey Lofts,Upper East Side,A
+PROP_027,Joseph Towers,East Village,C
+PROP_028,Pena Court,Tribeca,B
+PROP_029,Jones Towers,Financial District,B
