@@ -50,8 +50,12 @@ except ImportError:
         chief_editor, 
         risk_agent, 
         lease_agent,
-        listing_analyst_agent
+        lease_agent,
+        listing_analyst_agent,
+        call_perplexity,
+        MODEL_FAST, MODEL_SMART
     )
+    from src.api.rag_engine import RAGEngine
 
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -183,6 +187,10 @@ class AnalyzeRequest(BaseModel):
 class ScenarioRequest(BaseModel):
     rent_change_pct: float
     occupancy_change_pct: float
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[Dict[str, str]]] = []
 
 # --- 4. CORE ROUTES ---
 
@@ -438,6 +446,39 @@ def get_props(models_only: bool = False, current_user: UserData = Depends(get_cu
         # Return empty list on error so map doesn't crash frontend
         return []
 
+# Helper for generating mock tenants (Refactored for reuse in RAG)
+def generate_mock_tenants(units_subset):
+    tenants = []
+    if units_subset.empty: return []
+    
+    for _, unit in units_subset.iterrows():
+         # Deterministic mock data based on unit ID
+         seed = sum(ord(c) for c in str(unit['unit_id']))
+         names = ["Lori Perez", "Kathryn Jimenez", "Shawn Johnson", "James Ortiz", "Michael Smith", "Sarah Wilson", "David Brown", "Emily Davis"]
+         name = names[seed % len(names)]
+         
+         risk_val = (seed % 100) / 100.0
+         if risk_val > 0.8: risk = "High"
+         elif risk_val > 0.5: risk = "Medium" 
+         else: risk = "Low"
+         
+         sentiment_opts = ["Happy", "Neutral", "Unhappy"]
+         sentiment = sentiment_opts[seed % 3]
+
+         tenants.append({
+             "id": str(unit['unit_id']),
+             "name": name,
+             "unit": f"{unit['property_id']}_{unit['unit_id']}",
+             "rent": int(unit['market_rent']),
+             "income": int(unit['market_rent'] * 3.2),
+             "credit": 600 + (seed % 250),
+             "leaseEnd": "2026-06-30",
+             "riskLevel": risk,
+             "riskReason": "Stable Financials" if risk == "Low" else ("Late Payment History" if risk == "Medium" else " lease violation and noise complaints"),
+             "sentiment": sentiment
+         })
+    return tenants
+
 @app.get("/properties/{id}/yield")
 def get_yield(id: str):
     if units_df.empty: return {"opportunities": []}
@@ -487,36 +528,7 @@ def get_tenants(current_user: UserData = Depends(get_current_user)):
     else:
         relevant_units = relevant_units.head(50)
     
-    if relevant_units.empty:
-        return []
-
-    for _, unit in relevant_units.iterrows():
-         # Deterministic mock data based on unit ID
-         seed = sum(ord(c) for c in str(unit['unit_id']))
-         
-         names = ["Lori Perez", "Kathryn Jimenez", "Shawn Johnson", "James Ortiz", "Michael Smith", "Sarah Wilson", "David Brown", "Emily Davis"]
-         name = names[seed % len(names)]
-         
-         risk_val = (seed % 100) / 100.0
-         if risk_val > 0.8: risk = "High"
-         elif risk_val > 0.5: risk = "Medium" 
-         else: risk = "Low"
-         
-         sentiment_opts = ["Happy", "Neutral", "Unhappy"]
-         sentiment = sentiment_opts[seed % 3]
-
-         tenants.append({
-             "id": str(unit['unit_id']),
-             "name": name,
-             "unit": f"{unit['property_id']}_{unit['unit_id']}", # Make it clear which property
-             "rent": int(unit['market_rent']),
-             "income": int(unit['market_rent'] * 3.2),
-             "credit": 600 + (seed % 250),
-             "leaseEnd": "2026-06-30",
-             "riskLevel": risk,
-             "riskReason": "Stable Financials" if risk == "Low" else ("Late Payment History" if risk == "Medium" else " lease violation and noise complaints"),
-             "sentiment": sentiment
-         })
+    tenants = generate_mock_tenants(relevant_units)
          
     print(f"DEBUG: Returning {len(tenants)} tenants for {current_user.username}")
     return tenants
@@ -578,6 +590,75 @@ async def generate_memo(request: dict, current_user: UserData = Depends(get_curr
     buffer.close()
     
     return Response(content=pdf_bytes, media_type="application/pdf")
+
+@app.post("/chat")
+async def chat_endpoint(req: ChatRequest, current_user: UserData = Depends(get_current_user)):
+    """
+    Combined Orchestrator Endpoint:
+    - Routes to Macro/Market Agents for general questions
+    - Routes to RAG Engine for internal data questions
+    """
+    query_lower = req.message.lower()
+    
+    # 1. SCOPE DATA FOR USER
+    # Identical logic to properties/tenants route to ensure security
+    target_props = props_df.copy()
+    if current_user.property_id and current_user.property_id != "ALL":
+         target_props = target_props[target_props['property_id'] == current_user.property_id]
+         
+    visible_prop_ids = target_props['property_id'].unique().tolist()
+    target_units = units_df[units_df['property_id'].isin(visible_prop_ids)] if not units_df.empty else pd.DataFrame()
+    
+    # Generate tenants just for this RAG session
+    # Cap at 200 for performance if needed, or get all since it's backend processing
+    target_tenants_list = generate_mock_tenants(target_units.head(300))
+    
+    # 2. INTENT DETECTION
+    # "Orchestrator" Logic
+    
+    # A) Internal Data Intent (RAG) - Expanded keywords for comprehensive coverage
+    rag_keywords = [
+        "tenant", "who", "unit", "building", "property", "rent roll", "occupancy of", "lease",
+        "how many", "total", "count", "average", "list", "show", "find", "search",
+        "risk", "churn", "noi", "revenue", "income", "credit", "stats", "overview",
+        "listing", "available", "for rent"
+    ]
+    # Only route to external agents if specifically asking for market research/forecasts
+    external_keywords = ["forecast", "prediction", "2026", "2027", "macro", "economy", "inflation"]
+    is_external = any(k in query_lower for k in external_keywords)
+    is_rag = any(k in query_lower for k in rag_keywords) and not is_external
+    
+    if is_rag:
+        print(f"🤖 Orchestrator: Routing to RAG Engine")
+        rag = RAGEngine(
+            property_df=target_props, 
+            unit_df=target_units, 
+            tenant_data=target_tenants_list,
+            listings_df=real_listings_df  # Pass market listings
+        )
+        response = rag.query(req.message)
+        return {"response": response, "source": "Internal Database"}
+
+    # B) External Research Intent (Agents)
+    if "market" in query_lower or "trend" in query_lower or "vacancy" in query_lower or "growth" in query_lower:
+         print(f"🤖 Orchestrator: Routing to Market Agent")
+         # We can invoke the graph or just the node. For speed, just the node tool.
+         result = market_agent({"location": "NYC", "year": "2026"})
+         result_text = result.get('market_data', "No data found.")
+         # Wrap in natural language
+         final = call_perplexity(f"Summarize this market data for user query '{req.message}':\n{result_text}", MODEL_FAST, "Analyst")
+         return {"response": final, "source": "Market Agent (Perplexity)"}
+
+    if "macro" in query_lower or "economy" in query_lower or "rate" in query_lower or "inflation" in query_lower:
+         print(f"🤖 Orchestrator: Routing to Macro Agent")
+         result = macro_agent({"location": "NYC", "year": "2026"})
+         result_text = result.get('macro_data', "No data found.")
+         return {"response": result_text, "source": "Macro Agent (Perplexity)"}
+         
+    # C) Fallback / General Chat
+    print(f"🤖 Orchestrator: Routing to General Chat")
+    response = call_perplexity(req.message, MODEL_FAST, "Real Estate Assistant")
+    return {"response": response, "source": "AI Assistant"}
 
 
 if __name__ == "__main__":

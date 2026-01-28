@@ -20,6 +20,7 @@ This project pioneers a **Composable AI Architecture** where individual AI agent
 | **Risk Manager** | Scenario Auditor | Sonar | Evaluates proposed rent increases against market realities to predict tenant churn risk. |
 | **Lease Lawyer** | Document Analyst | Sonar | Extract clauses and red-flags from uploaded PDF lease documents. |
 | **Chief Editor** | Synthesizer | GPT-4o | Compiles outputs from all other agents into a cohesive, professional investment memo. |
+| **RAG Assistant** | Data Analyst | Sonar | Natural language queries over internal portfolio data (properties, units, tenants, listings). |
 
 ---
 
@@ -115,6 +116,21 @@ To model complex portfolio dynamics without violating privacy, we generated a ca
 **Autonomous Research**: Generate comprehensive market reports with one click using the Multi-Agent system.
 ![Analytics](docs/images/analytics.png)
 
+### 6. AI Assistant (RAG Chatbot) 🤖
+**Natural Language Data Access**: A persistent chat widget that provides instant access to your portfolio data.
+
+**Features:**
+- **Intelligent Routing**: Automatically routes queries to internal data (RAG) or external research agents
+- **Comprehensive Data Access**: Properties, Units, Tenants, Market Listings
+- **Markdown Rendering**: Beautiful formatted responses with tables, lists, and highlights
+- **Context-Aware**: Respects user permissions and property access controls
+
+**Example Queries:**
+- "How many tenants do we have?"
+- "Show me high risk tenants"
+- "What's the average rent across the portfolio?"
+- "List available properties in Tribeca"
+
 ---
 
 ## 🛠️ Installation & Setup
@@ -155,6 +171,7 @@ To model complex portfolio dynamics without violating privacy, we generated a ca
 ## 🔮 Roadmap
 *   [x] Composable Agent Architecture
 *   [x] Dashboard ML Widgets
+*   [x] **RAG Chatbot**: Natural language queries over internal portfolio data
 *   [ ] **Investment Committee API**: A multi-agent debate (Analyst vs. Risk Officer) for "Go/No-Go" decisions.
 *   [ ] **Computer Vision**: Automated "Curb Appeal" scoring from listing photos.
 

@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/Sidebar";
+import { ChatWidget } from "@/components/ChatWidget";
 import "./globals.css";
 
 export default function RootLayout({
@@ -22,6 +23,7 @@ export default function RootLayout({
             </div>
           </main>
         </div>
+        <ChatWidget />
       </body>
     </html>
   );
