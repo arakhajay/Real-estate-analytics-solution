@@ -198,3 +198,28 @@ def chief_editor(state: AgentState) -> dict:
     response = call_perplexity(prompt, MODEL_SMART, "Chief Editor")
     
     return {"final_report": response}
+
+
+def listing_analyst_agent(query: str, location: str) -> str:
+    """
+    Role: Investment Analyst
+    Skill: Analyzes a specific listing for investment potential.
+    """
+    print(f"🤖 Agent: Investment Analyst (Analyzing Listing in {location})")
+    
+    prompt = f"""
+    You are a Senior Real Estate Investment Analyst. 
+    Analyze the following property query/listing for investment potential:
+    
+    "{query}"
+    
+    Location: {location}
+    
+    Provide a detailed 3-section investment memo:
+    1. Valuation Analysis (Is it priced correctly? Compare to market averages)
+    2. Upside Potential (Renovation value, appreciation trends in {location})
+    3. Investment Verdict (Buy/Pass/Renegotiate with specific price target)
+    
+    Be professional, data-driven (infer from general market knowledge of {location}), and concise.
+    """
+    return call_perplexity(prompt, MODEL_SMART, "Investment Analyst")

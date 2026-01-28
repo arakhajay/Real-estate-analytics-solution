@@ -1,15 +1,28 @@
-from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Response, UploadFile, File, Form, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
 import joblib
 import os
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import requests
 import pypdf
 import io
 import json
+import sqlite3
+import bcrypt
+import jwt
+from datetime import datetime, timedelta
 from typing import TypedDict, List, Dict, Annotated, Optional
 from dotenv import load_dotenv
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # --- LANGGRAPH IMPORTS ---
 from langgraph.graph import StateGraph, END
@@ -23,7 +36,8 @@ try:
         legal_agent, 
         chief_editor, 
         risk_agent, 
-        lease_agent
+        lease_agent,
+        listing_analyst_agent
     )
 except ImportError:
     # Fallback for running directly from folder
@@ -35,13 +49,82 @@ except ImportError:
         legal_agent, 
         chief_editor, 
         risk_agent, 
-        lease_agent
+        lease_agent,
+        listing_analyst_agent
     )
 
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = FastAPI(title="ASA Real Estate Engines")
+
+# CORS Setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For dev; lock down in prod
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- AUTH CONFIG ---
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-for-dev-only")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 Hours
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "users.db")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# --- AUTH MODELS ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    role: str
+    property_id: Optional[str] = None
+    username: str
+
+class UserData(BaseModel):
+    username: str
+    role: str
+    property_id: Optional[str] = None
+
+# --- AUTH UTILS ---
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def verify_password(plain_password, hashed_password):
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role")
+        property_id: str = payload.get("pid")
+        print(f"AUTH DEBUG: Decoded Token for {username}, PID={property_id}, Role={role}")
+        
+        if username is None:
+            raise credentials_exception
+        return UserData(username=username, role=role, property_id=property_id)
+    except jwt.PyJWTError as e:
+        print(f"AUTH FAIL: JWT Error {e}")
+        raise credentials_exception
 
 # --- 1. LOAD ML MODELS ---
 MODELS = {}
@@ -105,6 +188,51 @@ class ScenarioRequest(BaseModel):
 
 @app.get("/")
 def health_check(): return {"status": "ASA Neural Core Online"}
+
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (form_data.username,))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if not user:
+        print(f"LOGIN FAIL: User {form_data.username} not found")
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    print(f"LOGIN DEBUG: Found user {user['username']}, Role={user['role']}, PID={user['property_id']}")
+
+    if not verify_password(form_data.password, user['hashed_password']):
+        print("LOGIN FAIL: Password mismatch")
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+        
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user['username'], "role": user['role'], "pid": user['property_id']}, 
+        expires_delta=access_token_expires
+    )
+    print(f"LOGIN DEBUG: Generated Token, PID in payload: {user['property_id']}")
+    
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "role": user['role'],
+        "property_id": user['property_id'],
+        "username": user['username']
+    }
+
+# Gmail / Google Login Mock
+@app.post("/auth/google/login")
+async def google_login_mock():
+    # In a real app, this would verify the Google Token ID sent from frontend
+    # For now, we simulate a login for a specific user to test the flow
+    # This requires a valid 'mock' user to be in the DB or we just mock success
+    return {"message": "Google Login Verified", "token": "mock_google_jwt_token_123"}
+
+@app.get("/users/me", response_model=UserData)
+async def read_users_me(current_user: UserData = Depends(get_current_user)):
+    return current_user
 
 @app.post("/predict/rent")
 def predict_rent(features: PropertyFeatures):
@@ -202,7 +330,7 @@ def get_listings(query: str = None):
             delta = ai_val - price
             verdict = "Undervalued" if delta > 150 else ("Overvalued" if delta < -150 else "Fair")
             if query and 'undervalued' in query.lower() and verdict != 'Undervalued': continue
-            results.append({"title": row.get('title'), "location": row.get('location'), "price": price, "ai_value": ai_val, "delta": delta, "verdict": verdict, "sqft": sqft, "type": "1BD"})
+            results.append({"title": row.get('title'), "location": row.get('location'), "price": price, "ai_value": ai_val, "delta": delta, "verdict": verdict, "sqft": sqft, "type": "1BD", "link": f"https://www.zillow.com/homes/{str(row.get('location', '')).replace(' ', '-').lower()}_rb/"})
         except: 
             failures += 1; continue
     if failures > 0: print(f"WARNING: Skipped {failures} listings.")
@@ -239,28 +367,76 @@ def run_scenario(req: ScenarioRequest):
     return {"baseline_revenue": int(baseline_revenue), "new_revenue": int(new_revenue), "delta": int(new_revenue - baseline_revenue), "ai_analysis": result.get("risk_analysis", "Analysis Failed")}
 
 @app.get("/analytics/data")
-def get_analytics_data():
-    return {"rent_growth": [{"year": "2023", "portfolio": 2.5, "market": 1.8}, {"year": "2024", "portfolio": 3.2, "market": 2.1}, {"year": "2025", "portfolio": 4.5, "market": 3.0}, {"year": "2026", "portfolio": 5.1, "market": 3.1}], "occupancy": [{"quarter": "Q1 25", "value": 94}, {"quarter": "Q2 25", "value": 95}, {"quarter": "Q3 25", "value": 96}, {"quarter": "Q4 25", "value": 93}]}
+def get_analytics_data(current_user: UserData = Depends(get_current_user)):
+    # 1. Determine Scope
+    target_df = props_df.copy()
+    if current_user.property_id and current_user.property_id != "ALL":
+         target_df = target_df[target_df['property_id'] == current_user.property_id]
+    
+    # 2. Calculate Real-ish Metrics
+    # Growth (Mocked logic but consistent with subset)
+    base_growth = 2.5
+    if not target_df.empty and 'class' in target_df.columns:
+        if 'A' in target_df['class'].iloc[0]: base_growth += 1.5
+    
+    # Occupancy (Mocked but based on subset avg)
+    avg_occ = 94
+    if not target_df.empty and 'occupancy' in target_df.columns:
+        # If we had real occupancy in props_df, use it. currently it's synthetic.
+        pass
+
+    return {
+        "rent_growth": [
+            {"year": "2023", "portfolio": base_growth, "market": 1.8}, 
+            {"year": "2024", "portfolio": base_growth + 0.7, "market": 2.1}, 
+            {"year": "2025", "portfolio": base_growth + 1.5, "market": 3.0}, 
+            {"year": "2026", "portfolio": base_growth + 2.1, "market": 3.1}
+        ], 
+        "occupancy": [
+            {"quarter": "Q1 25", "value": avg_occ}, 
+            {"quarter": "Q2 25", "value": avg_occ + 1}, 
+            {"quarter": "Q3 25", "value": avg_occ + 2}, 
+            {"quarter": "Q4 25", "value": avg_occ - 1}
+        ]
+    }
 
 # --- 7. UTILS ---
 @app.get("/properties") 
-def get_props(): 
-    if props_df.empty: return [{"id": "P1", "name": "Rodriguez Towers (Mock)", "neighborhood": "Harlem", "class": "B", "units": 65, "occupancy": 94, "noi": 1200000, "avg_rent": 3800}]
+def get_props(models_only: bool = False, current_user: UserData = Depends(get_current_user)): 
+    # If DB load failed
+    if props_df.empty: 
+        return [{"id": "P1", "name": "Rodriguez Towers (Mock)", "neighborhood": "Harlem", "class": "B", "units": 65, "occupancy": 94, "noi": 1200000, "avg_rent": 3800}]
+    
     try:
+        # FILTER DATA BASED ON ROLE
+        print(f"DEBUG: User={current_user.username}, Role={current_user.role}, PID={current_user.property_id}")
+        target_df = props_df.copy()
+        
+        # Explicit check for specific property access
+        if current_user.property_id and current_user.property_id != "ALL":
+             # Ensure we are filtering by the exact string stored in the CSV
+             target_df = target_df[target_df['property_id'] == current_user.property_id]
+             print(f"DEBUG: Filtered to {len(target_df)} properties for {current_user.property_id}")
+
         if not units_df.empty:
             stats = units_df.groupby('property_id').agg({'unit_id': 'count', 'market_rent': 'mean'}).reset_index()
             stats.columns = ['property_id', 'units', 'avg_rent']
-            merged = pd.merge(props_df, stats, on='property_id', how='left')
+            merged = pd.merge(target_df, stats, on='property_id', how='left')
             merged['units'] = merged['units'].fillna(0).astype(int)
             merged['avg_rent'] = merged['avg_rent'].fillna(0).astype(int)
         else:
-            merged = props_df.copy(); merged['units'] = 0; merged['avg_rent'] = 0
+            merged = target_df.copy(); merged['units'] = 0; merged['avg_rent'] = 0
+            
         merged['occupancy'] = 94; merged['noi'] = (merged['units'] * merged['avg_rent'] * 12 * 0.65).astype(int) 
+        
         result = []
         for _, row in merged.iterrows():
             result.append({"id": str(row['property_id']), "name": str(row['name']), "neighborhood": str(row['neighborhood']), "class": str(row['class']), "units": int(row['units']), "occupancy": int(row['occupancy']), "noi": int(row['noi']), "avg_rent": int(row['avg_rent'])})
         return result
-    except: return [{"id": "P_ERR", "name": "Error Loading Properties", "neighborhood": "N/A", "class": "N/A", "units": 0, "occupancy": 0, "noi": 0, "avg_rent": 0}]
+    except Exception as e: 
+        print(f"Error serving properties: {e}")
+        # Return empty list on error so map doesn't crash frontend
+        return []
 
 @app.get("/properties/{id}/yield")
 def get_yield(id: str):
@@ -287,6 +463,122 @@ async def analyze_legal(file: UploadFile = File(...), query: str = Form(...)):
     text = "".join([p.extract_text() for p in pdf.pages])[:10000]
     result = lease_agent({"document_text": text, "user_query": query})
     return {"result": result.get("lease_analysis", "Analysis Failed")}
+
+@app.get("/tenants")
+def get_tenants(current_user: UserData = Depends(get_current_user)):
+    print(f"DEBUG TENANTS: User={current_user.username} PID={current_user.property_id}")
+    
+    # Mock tenant data generation based on accessible units
+    tenants = []
+    
+    # 1. Determine which properties this user can see
+    visible_props = []
+    if not current_user.property_id or current_user.property_id == "ALL":
+        visible_props = props_df['property_id'].unique().tolist()
+    else:
+        visible_props = [current_user.property_id]
+        
+    # 2. Get units for these properties
+    relevant_units = units_df[units_df['property_id'].isin(visible_props)]
+    
+    # If it's a single owner, show all their units (up to 500). If Admin, cap at 50 to avoid massive lists.
+    if current_user.property_id and current_user.property_id != "ALL":
+        relevant_units = relevant_units.head(200)
+    else:
+        relevant_units = relevant_units.head(50)
+    
+    if relevant_units.empty:
+        return []
+
+    for _, unit in relevant_units.iterrows():
+         # Deterministic mock data based on unit ID
+         seed = sum(ord(c) for c in str(unit['unit_id']))
+         
+         names = ["Lori Perez", "Kathryn Jimenez", "Shawn Johnson", "James Ortiz", "Michael Smith", "Sarah Wilson", "David Brown", "Emily Davis"]
+         name = names[seed % len(names)]
+         
+         risk_val = (seed % 100) / 100.0
+         if risk_val > 0.8: risk = "High"
+         elif risk_val > 0.5: risk = "Medium" 
+         else: risk = "Low"
+         
+         sentiment_opts = ["Happy", "Neutral", "Unhappy"]
+         sentiment = sentiment_opts[seed % 3]
+
+         tenants.append({
+             "id": str(unit['unit_id']),
+             "name": name,
+             "unit": f"{unit['property_id']}_{unit['unit_id']}", # Make it clear which property
+             "rent": int(unit['market_rent']),
+             "income": int(unit['market_rent'] * 3.2),
+             "credit": 600 + (seed % 250),
+             "leaseEnd": "2026-06-30",
+             "riskLevel": risk,
+             "riskReason": "Stable Financials" if risk == "Low" else ("Late Payment History" if risk == "Medium" else " lease violation and noise complaints"),
+             "sentiment": sentiment
+         })
+         
+    print(f"DEBUG: Returning {len(tenants)} tenants for {current_user.username}")
+    return tenants
+
+@app.get("/search")
+def search_listings(query: str = None, current_user: UserData = Depends(get_current_user)):
+    return get_listings(query)
+
+@app.post("/analyze")
+def analyze_listing(req: AnalyzeRequest, current_user: UserData = Depends(get_current_user)):
+    try:
+        # Use the specialized agent
+        analysis = listing_analyst_agent(req.query, req.location)
+        return {"result": analysis}
+    except Exception as e:
+        print(f"Analysis Agent Error: {e}")
+        return {"result": f"Analysis failed: {str(e)}"}
+
+@app.post("/generate-memo")
+async def generate_memo(request: dict, current_user: UserData = Depends(get_current_user)):
+    title = request.get('title', 'Investment Memo')
+    content = request.get('content', 'No content provided.')
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+    styles = getSampleStyleSheet()
+    
+    # Custom Styles
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=24, spaceAfter=24, textColor='#4B0082') # Indigo
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'], fontSize=16, spaceBefore=18, spaceAfter=12, textColor='#333333')
+    body_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=11, leading=14, spaceAfter=10)
+    
+    flowables = []
+    
+    # Header
+    flowables.append(Paragraph("ASA REAL ESTATE INVESTMENTS", styles['Normal']))
+    flowables.append(Spacer(1, 12))
+    flowables.append(Paragraph(f"MEMO: {title}", title_style))
+    flowables.append(Paragraph(f"DATE: {datetime.now().strftime('%B %d, %Y')}", styles['Normal']))
+    flowables.append(Spacer(1, 24))
+    
+    # Content Processing (Handle Markdown-ish text from LLM)
+    # Simple markdown to flowable converter for basic structure
+    for line in content.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('###') or line.startswith('##') or line.startswith('**'):
+             clean_line = line.replace('#', '').replace('*', '').strip()
+             flowables.append(Paragraph(clean_line, h2_style))
+        elif line.startswith('- '):
+             flowables.append(Paragraph(f"• {line[2:]}", body_style))
+        else:
+             flowables.append(Paragraph(line, body_style))
+            
+    doc.build(flowables)
+    
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    return Response(content=pdf_bytes, media_type="application/pdf")
+
 
 if __name__ == "__main__":
     import uvicorn

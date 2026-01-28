@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Search, Filter, AlertTriangle, Smile, Meh, Frown, Mail, Zap } from 'lucide-react'
 
 interface Tenant {
@@ -21,15 +22,26 @@ export default function TenantsPage() {
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState('All') // All, High Risk, At Risk
 
+    const router = useRouter()
+
     useEffect(() => {
-        fetch('/api/tenants')
-            .then(res => res.json())
+        const token = localStorage.getItem('token');
+        fetch('http://localhost:8000/tenants', {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        })
+            .then(res => {
+                if (res.status === 401) {
+                    router.push('/login');
+                    throw new Error("Unauthorized");
+                }
+                return res.json()
+            })
             .then(data => {
                 setTenants(data)
                 setLoading(false)
             })
             .catch(err => console.error(err))
-    }, [])
+    }, [router])
 
     const filteredTenants = tenants.filter(t => {
         if (filter === 'High Risk') return t.riskLevel === 'High';
@@ -102,12 +114,12 @@ export default function TenantsPage() {
                             {/* 3. Risk Level */}
                             <div className="col-span-2">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${tenant.riskLevel === 'High' ? 'bg-red-50 border-red-100 text-red-600' :
-                                        tenant.riskLevel === 'Medium' ? 'bg-yellow-50 border-yellow-100 text-yellow-600' :
-                                            'bg-green-50 border-green-100 text-green-600'
+                                    tenant.riskLevel === 'Medium' ? 'bg-yellow-50 border-yellow-100 text-yellow-600' :
+                                        'bg-green-50 border-green-100 text-green-600'
                                     }`}>
                                     <div className={`w-1.5 h-1.5 rounded-full ${tenant.riskLevel === 'High' ? 'bg-red-500' :
-                                            tenant.riskLevel === 'Medium' ? 'bg-yellow-500' :
-                                                'bg-green-500'
+                                        tenant.riskLevel === 'Medium' ? 'bg-yellow-500' :
+                                            'bg-green-500'
                                         }`}></div>
                                     {tenant.riskLevel} Risk
                                 </span>

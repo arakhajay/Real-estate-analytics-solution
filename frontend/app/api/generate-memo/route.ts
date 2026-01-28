@@ -5,9 +5,16 @@ const PY_API_URL = 'http://127.0.0.1:8000';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
+        const authHeader = req.headers.get('Authorization');
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (authHeader) {
+            headers['Authorization'] = authHeader;
+        }
+
         const res = await fetch(`${PY_API_URL}/generate-memo`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify(body)
         });
 

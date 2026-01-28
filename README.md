@@ -92,24 +92,28 @@ To model complex portfolio dynamics without violating privacy, we generated a ca
 ## 🖥️ Application Features & Usage
 
 ### 1. Dashboard Overview
-*   **Rent Estimator**: Enter property details (Neighborhood + Class) to get a real-time ML-predicted rent price.
-    *   *Backend*: `POST /predict/rent` (Gradient Boosting Model)
-*   **Churn Riskometer**: Enter tenant financials to predict probability of lease break/churn.
-    *   *Backend*: `POST /predict/churn` (XGBoost Model)
+**Real-time Portfolio Health**: Monitor occupancy, rent growth, and pending renewals.
+![Dashboard](docs/images/dashboard_main.png)
+
+*   **Rent Estimator & Churn Riskometer**:
+    *   ML-powered widgets for instant valuation and risk assessment.
+    ![Widgets](docs/images/dashboard_widgets.png)
 
 ### 2. Market Search
-A semantic search interface for finding listings.
-*   **Usage**: Type "2 bedroom in Harlem under $3000".
-*   **Tech**: Uses fuzzy string matching and pandas filtering on the scraped dataset.
+**"The Oracle"**: AI-Powered Natural Language Search.
+![Market Search](docs/images/market_search.png)
 
-### 3. Properties & Yield Hunter
-Manage your portfolio and identify upside.
-*   **Feature**: **Yield Opportunity**.
-    *   *How it works*: Use the "Yield" button on any property card. The system scans all units in that building, comparing current rent vs. market rent, and highlights the units with the biggest revenue gap (Opportunity).
+### 3. Tenants & Risk Center
+**Proactive Retention Console**: Identify high-risk tenants (High Rent Burden + Low Credit) before they leave.
+![Tenants](docs/images/tenants_risk.png)
 
-### 4. Analytics (Deep Research)
-*   **Feature**: Generates broad market reports using the Multi-Agent system.
-*   **Usage**: Click "Run Simulation" or "Generate Report" to trigger the `LangGraph` workflow.
+### 4. Properties & Yield Hunter
+**Asset Optimization**: Identify specific units that are undervalued relative to the market.
+![Properties](docs/images/properties.png)
+
+### 5. Analytics (Deep Research)
+**Autonomous Research**: Generate comprehensive market reports with one click using the Multi-Agent system.
+![Analytics](docs/images/analytics.png)
 
 ---
 

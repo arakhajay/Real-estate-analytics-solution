@@ -7,7 +7,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-[#F3F4F6] min-h-screen">
         <div className="flex h-screen overflow-hidden">
           {/* Sidebar Area */}

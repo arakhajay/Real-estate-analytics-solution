@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     BarChart, Bar, AreaChart, Area
@@ -22,22 +23,46 @@ export default function AnalyticsPage() {
     const [report, setReport] = useState('')
     const [generatingReport, setGeneratingReport] = useState(false)
 
+    const router = useRouter()
+
     useEffect(() => {
-        fetch('/api/analytics/data')
-            .then(res => res.json())
+        const token = localStorage.getItem('token');
+        if (!token) {
+            router.push('/login');
+            return;
+        }
+
+        fetch('http://localhost:8000/analytics/data', {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        })
+            .then(res => {
+                if (res.status === 401) {
+                    router.push('/login');
+                    throw new Error("Unauthorized");
+                }
+                return res.json()
+            })
             .then(d => {
                 setData(d)
                 setLoading(false)
             })
-    }, [])
+            .catch(err => {
+                console.error(err)
+                setLoading(false)
+            })
+    }, [router])
 
     const runScenario = async () => {
         setRunningScenario(true)
         setScenarioResult(null)
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch('/api/analytics/scenario', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ rent_change_pct: rentChange, occupancy_change_pct: occChange })
             })
             const result = await res.json()
@@ -52,7 +77,13 @@ export default function AnalyticsPage() {
     const generateReport = async () => {
         setGeneratingReport(true)
         try {
-            const res = await fetch('/api/analytics/report', { method: 'POST' })
+            const token = localStorage.getItem('token');
+            const res = await fetch('/api/analytics/report', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
             const result = await res.json()
             setReport(result.report)
         } catch (e) {

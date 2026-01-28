@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Search, MapPin, Sparkles, TrendingUp, TrendingDown, ArrowRight, X, Loader2 } from 'lucide-react'
 
 interface Listing {
@@ -23,6 +24,7 @@ export default function MarketSearchPage() {
     const [analyzing, setAnalyzing] = useState(false)
     const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
     const [analysisResult, setAnalysisResult] = useState<string | null>(null)
+    const router = useRouter()
 
     useEffect(() => {
         // Initial load
@@ -31,9 +33,19 @@ export default function MarketSearchPage() {
 
     const fetchListings = (query = "") => {
         setLoading(true);
-        const url = query ? `/api/search?query=${encodeURIComponent(query)}` : '/api/search';
-        fetch(url)
-            .then(res => res.json())
+        const url = query ? `http://localhost:8000/search?query=${encodeURIComponent(query)}` : 'http://localhost:8000/search';
+        const token = localStorage.getItem('token');
+
+        fetch(url, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        })
+            .then(res => {
+                if (res.status === 401) {
+                    router.push('/login');
+                    throw new Error("Unauthorized");
+                }
+                return res.json()
+            })
             .then(data => {
                 if (Array.isArray(data)) {
                     setListings(data)
@@ -61,8 +73,13 @@ export default function MarketSearchPage() {
         setAnalysisResult(null)
 
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch('/api/analyze', {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     query: `Analyze investment potential for ${listing.title} at ${listing.price}/mo vs AI Value ${listing.ai_value}.`,
                     location: listing.location
@@ -81,9 +98,13 @@ export default function MarketSearchPage() {
         if (!selectedListing || !analysisResult) return false;
 
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch('/api/generate-memo', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     title: selectedListing.title,
                     content: analysisResult

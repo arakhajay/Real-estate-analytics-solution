@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Search, Users, PieChart, Settings, LogOut, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +15,19 @@ const menuItems = [
 
 export function Sidebar() {
     const pathname = usePathname()
+    const router = useRouter()
+
+    const handleLogout = () => {
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('token')
+            localStorage.removeItem('user_role')
+            localStorage.removeItem('user_pid')
+            localStorage.removeItem('username')
+            router.push('/login')
+        }
+    }
+
+    if (pathname === '/login') return null;
 
     return (
         <aside className="fixed left-4 top-4 bottom-4 w-20 lg:w-64 bg-sidebar rounded-3xl flex flex-col items-center lg:items-start py-8 transition-all duration-300 shadow-2xl z-50 overflow-hidden">
@@ -49,10 +62,17 @@ export function Sidebar() {
             </nav>
 
             {/* Bottom Actions */}
-            <div className="w-full px-3 lg:px-6 mt-auto">
+            <div className="w-full px-3 lg:px-6 mt-auto space-y-2">
                 <button className="w-full flex items-center gap-4 px-3 py-3 rounded-2xl text-sidebar-foreground hover:bg-white/10 hover:text-white transition-all">
                     <Settings className="w-6 h-6" />
                     <span className="font-medium hidden lg:block">Settings</span>
+                </button>
+                <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-4 px-3 py-3 rounded-2xl text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-all"
+                >
+                    <LogOut className="w-6 h-6" />
+                    <span className="font-medium hidden lg:block">Log Out</span>
                 </button>
             </div>
         </aside>

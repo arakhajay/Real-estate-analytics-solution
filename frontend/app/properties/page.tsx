@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Building2, TrendingUp, DollarSign, Users, Scale, AlertCircle, FileText, ArrowRight, X, Loader2, Sparkles, Upload } from 'lucide-react'
 
 // Types
@@ -38,14 +39,40 @@ export default function PropertiesPage() {
     const [legalResult, setLegalResult] = useState('')
     const [analyzingLegal, setAnalyzingLegal] = useState(false)
 
+    const router = useRouter()
+
     useEffect(() => {
-        fetch('/api/properties')
-            .then(res => res.json())
+        const token = localStorage.getItem('token')
+        if (!token) {
+            router.push('/login')
+            return
+        }
+
+        fetch('http://localhost:8000/properties', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+            .then(res => {
+                if (res.status === 401) {
+                    router.push('/login')
+                    throw new Error("Unauthorized")
+                }
+                return res.json()
+            })
             .then(data => {
-                setProperties(data)
+                if (Array.isArray(data)) {
+                    setProperties(data)
+                } else {
+                    setProperties([])
+                }
                 setLoading(false)
             })
-    }, [])
+            .catch(err => {
+                console.error(err)
+                setLoading(false)
+            })
+    }, [router])
 
     const handlePropClick = (p: Property) => {
         setSelectedProp(p)
